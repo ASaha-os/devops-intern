@@ -1,4 +1,3 @@
-```yaml
 name: CI Pipeline
 
 on:
@@ -106,4 +105,3 @@ jobs:
         run: |
           docker stop nginx-test || true
           docker rm nginx-test || true
-```
