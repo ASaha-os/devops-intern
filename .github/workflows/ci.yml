@@ -1,3 +1,4 @@
+```yaml
 name: CI Pipeline
 
 on:
@@ -5,6 +6,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   lint:
@@ -44,10 +49,11 @@ jobs:
           context: ./app
           push: false
           tags: nginx-app:test
-          build-args: BUILD_SHA=${{ github.sha }}
+          build-args: |
+            BUILD_SHA=${{ github.sha }}
 
       - name: Login to GitHub Container Registry
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -55,12 +61,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push to GitHub Container Registry
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
         with:
           context: ./app
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }},ghcr.io/${{ github.repository }}:latest
+          tags: ghcr.io/asaha-os/devops-intern:${{ github.sha }}
+          build-args: |
+            BUILD_SHA=${{ github.sha }}
 
   test:
     runs-on: ubuntu-latest
@@ -79,6 +87,8 @@ jobs:
           push: false
           tags: nginx-app:test
           load: true
+          build-args: |
+            BUILD_SHA=${{ github.sha }}
 
       - name: Run container
         run: |
@@ -92,6 +102,8 @@ jobs:
         run: curl -f http://localhost:8080/healthz
 
       - name: Cleanup
+        if: always()
         run: |
-          docker stop nginx-test
-          docker rm nginx-test
+          docker stop nginx-test || true
+          docker rm nginx-test || true
+```
