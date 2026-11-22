@@ -2,7 +2,7 @@ FROM alpine:3.21.3
 
 ARG BUILD_SHA=local
 
-RUN apk add --no-cache nginx=1.26.3-r3 \
+RUN apk add --no-cache nginx=1.26.3-r4 \
     && mkdir -p /usr/share/nginx/html \
     && chown -R nginx:nginx /usr/share/nginx/html
 
