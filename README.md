@@ -94,9 +94,9 @@ The workflow badge at the top points to the repository Actions page. A successfu
 `nomad/nginx-app.nomad.hcl` defines one Docker task in a service group, with dynamic named port `http`, 100 MHz CPU, 64 MB memory, a Consul `/healthz` HTTP check, rolling update settings, restart policy, and bounded rescheduling.
 
 ```sh
-nomad job validate -var='image_repository=ghcr.io/asaha-os/devops-intern' -var='image_tag=abc1234' nomad/nginx-app.nomad.hcl
-nomad job plan -var='image_repository=ghcr.io/asaha-os/devops-intern' -var='image_tag=abc1234' nomad/nginx-app.nomad.hcl
-nomad job run -var='image_repository=ghcr.io/asaha-os/devops-intern' -var='image_tag=abc1234' nomad/nginx-app.nomad.hcl
+nomad job validate -var="image_repository=ghcr.io/asaha-os/devops-intern" -var="image_tag=abc1234" nomad/nginx-app.nomad.hcl
+nomad job plan -var="image_repository=ghcr.io/asaha-os/devops-intern" -var="image_tag=abc1234" nomad/nginx-app.nomad.hcl
+nomad job run -var="image_repository=ghcr.io/asaha-os/devops-intern" -var="image_tag=abc1234" nomad/nginx-app.nomad.hcl
 nomad job status nginx-app
 ```
 
