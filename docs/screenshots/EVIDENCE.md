@@ -65,20 +65,72 @@ docker compose -f monitoring/docker-compose.yaml up
 - ✅ Promtail (log collection)  
 - ✅ Grafana (port 3000)
 
-### Loki Query Example
+### Query Logs via Loki API
 
-**LogQL Query:**
-```
-{job="docker", container="nginx-app"}
+```bash
+# Get available labels
+curl -s http://localhost:3100/loki/api/v1/labels
+
+# Get container values
+curl -s http://localhost:3100/loki/api/v1/label/container/values
+
+# Query range for NGINX logs (returns actual log entries)
+curl -s -G "http://localhost:3100/loki/api/v1/query_range" --data "query={job=\"docker\",container=\"nginx-app\"}"
+
+# Query for access logs (GET requests)
+curl -s -G "http://localhost:3100/loki/api/v1/query_range" --data "query={job=\"docker\",container=\"nginx-app\"} |= \"GET\""
 ```
 
-**Expected Results:** Container logs from NGINX showing HTTP requests
+**Example Response (3 log entries found):**
+```json
+{
+  "status": "success",
+  "data": {
+    "resultType": "streams",
+    "result": [{
+      "stream": {
+        "container": "nginx-app",
+        "job": "docker",
+        "service": "docker"
+      },
+      "values": [
+        ["timestamp", "172.17.0.1 - - [22/Nov/2026:05:32:56 +0000] \"GET / HTTP/1.1\" 200 848"],
+        ["timestamp", "172.17.0.1 - - [22/Nov/2026:05:36:08 +0000] \"GET / HTTP/1.1\" 200 848"]
+      ]
+    }],
+    "stats": {"summary": {"totalEntriesReturned": 3, "totalLinesProcessed": 22}}
+  }
+}
+```
 
 ### Grafana Access
 
 - URL: http://localhost:3000
-- Data Source: http://loki:3100
-- Query logs in Explore tab
+- Data Source: Loki (already configured)
+- Query in Explore: `{job="docker", container="nginx-app"}`
+
+### Grafana Query Examples
+
+In Grafana **Explore** tab:
+
+1. **Select Loki data source** (already configured)
+
+2. **Query all NGINX logs:**
+   ```
+   {job="docker", container="nginx-app"}
+   ```
+
+3. **Query access logs (GET requests only):**
+   ```
+   {job="docker", container="nginx-app"} |= "GET"
+   ```
+
+4. **Query for 404 errors:**
+   ```
+   {job="docker", container="nginx-app"} |= " 404 "
+   ```
+
+**Result:** Returns log entries like `172.17.0.1 - - [22/Nov/2026:05:32:56 +0000] "GET / HTTP/1.1" 200 848`
 
 ## Nomad Deployment (Example Output)
 
