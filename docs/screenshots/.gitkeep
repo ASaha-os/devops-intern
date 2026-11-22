@@ -1,0 +1,8 @@
+# Screenshots directory
+
+Place all project screenshots here:
+- ci-workflow.png
+- docker-build.png
+- nomad-deployment.png
+- grafana-loki-query.png
+- loki-logs.png
