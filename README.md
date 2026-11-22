@@ -177,11 +177,3 @@ The Dockerfile validates that BUILD_SHA contains only alphanumeric characters, d
 - `scripts/*.sh` use Bash strict mode; `pipefail` is not POSIX shell syntax but is widely supported.
 - Image size may vary slightly depending on Alpine package updates. The target is < 60 MB.
 
-## Screenshots
-
-All screenshots are available in `docs/screenshots/`:
-- `ci-workflow.png` - GitHub Actions successful CI run
-- `docker-build.png` - Docker build output with image size
-- `nomad-deployment.png` - Nomad job deployment with SHA-tagged image
-- `grafana-loki-query.png` - Grafana Explore with LogQL query results
-- `loki-logs.png` - Container log visualization in Grafana
