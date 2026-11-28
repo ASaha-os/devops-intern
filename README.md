@@ -29,7 +29,7 @@ This repository demonstrates a complete DevOps pipeline: build a static NGINX si
 > # 5. View logs in Grafana: http://localhost:3000 (admin/admin)
 > #    Query: {container=~"nginx.*"}
 > ```
-> **✅ ALL VERIFIED ON 2026-11-28** - See [COMPLETE_VERIFICATION.md](COMPLETE_VERIFICATION.md)
+
 
 ---
 
@@ -106,8 +106,6 @@ consul version
 ---
 
 ## Step-by-Step Setup Guide
-
-> **✅ VERIFIED WORKING:** All steps below have been tested and verified on 2026-11-28. See [COMPLETE_VERIFICATION.md](COMPLETE_VERIFICATION.md) for detailed test results.
 
 ### Step 1: Clone and Test Locally (Docker)
 
@@ -266,7 +264,6 @@ curl http://localhost:3100/ready
 
 ### Step 3: Deploy to Nomad
 
-> **✅ VERIFIED:** Nomad v2.1.1 and Consul v2.1.0 tested and working. See [COMPLETE_VERIFICATION.md](COMPLETE_VERIFICATION.md) for proof.
 
 **3.1 Verify Nomad is running:**
 ```bash
@@ -980,8 +977,6 @@ curl -G "http://localhost:3100/loki/api/v1/query" \
 
 ## Additional Resources
 
-- **Detailed Evidence:** See [docs/screenshots/EVIDENCE.md](docs/screenshots/EVIDENCE.md) for test results and verification
-- **Full Deployment Guide:** See [docs/screenshots/RUNNING.md](docs/screenshots/RUNNING.md) for complete walkthrough
 - **Loki Setup Details:** See [monitoring/loki_setup.md](monitoring/loki_setup.md) for monitoring configuration
 - **CI Pipeline:** See [.github/workflows/ci.yml](.github/workflows/ci.yml) for GitHub Actions workflow
 - **Nomad Job Spec:** See [nomad/nginx-app.nomad.hcl](nomad/nginx-app.nomad.hcl) for deployment configuration
@@ -1000,6 +995,6 @@ curl -G "http://localhost:3100/loki/api/v1/query" \
 - [x] Comprehensive documentation
 
 **Version:** v1.0.0  
-**Last Updated:** 2026-11-22  
+**Last Updated:** 2026-11-28
 **Status:** Production Ready ✨
 
