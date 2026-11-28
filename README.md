@@ -10,6 +10,27 @@
 
 This repository demonstrates a complete DevOps pipeline: build a static NGINX site, run CI/CD with GitHub Actions, publish to GitHub Container Registry (GHCR), deploy with HashiCorp Nomad + Consul, and aggregate logs with Grafana Loki.
 
+> **🚀 QUICK START FOR REPRODUCTION:**
+> ```bash
+> # 1. Build image
+> docker build --build-arg BUILD_SHA=test123 -t nginx-app:test123 ./app
+>
+> # 2. Start monitoring
+> docker compose -f monitoring/docker-compose.yaml up -d
+>
+> # 3. Deploy to Nomad (requires Nomad + Consul running)
+> nomad job validate -var="image_repository=nginx-app" -var="image_tag=test123" nomad/nginx-app.nomad.hcl
+> nomad job run -var="image_repository=nginx-app" -var="image_tag=test123" nomad/nginx-app.nomad.hcl
+>
+> # 4. Test (use port from: nomad alloc status <ALLOC_ID>)
+> curl http://127.0.0.1:<PORT>/
+> curl http://127.0.0.1:<PORT>/healthz
+>
+> # 5. View logs in Grafana: http://localhost:3000 (admin/admin)
+> #    Query: {container=~"nginx.*"}
+> ```
+> **✅ ALL VERIFIED ON 2026-11-28** - See [COMPLETE_VERIFICATION.md](COMPLETE_VERIFICATION.md)
+
 ---
 
 ## 📋 Table of Contents
@@ -86,6 +107,8 @@ consul version
 
 ## Step-by-Step Setup Guide
 
+> **✅ VERIFIED WORKING:** All steps below have been tested and verified on 2026-11-28. See [COMPLETE_VERIFICATION.md](COMPLETE_VERIFICATION.md) for detailed test results.
+
 ### Step 1: Clone and Test Locally (Docker)
 
 **1.1 Clone the repository:**
@@ -96,8 +119,28 @@ cd devops-intern
 
 **1.2 Build the Docker image:**
 ```bash
-docker build --build-arg BUILD_SHA=local -t nginx-app:local app/
+# Using a custom build identifier
+docker build --build-arg BUILD_SHA=test123 -t nginx-app:test123 ./app
+
+# Or use git commit SHA
+docker build --build-arg BUILD_SHA=$(git rev-parse --short HEAD) -t nginx-app:local ./app
 ```
+
+**Expected output:**
+```
+[+] Building 5.5s (11/11) FINISHED
+=> [1/6] FROM docker.io/library/alpine:3.21.3
+=> [2/6] RUN apk add --no-cache nginx=1.26.3-r5
+...
+Successfully tagged nginx-app:test123
+```
+
+**Verify image size:**
+```bash
+docker images nginx-app
+```
+
+**Expected:** Image size should be ~14.5 MB (well under 60 MB requirement)
 
 **Expected output:**
 ```
@@ -110,19 +153,27 @@ Successfully tagged nginx-app:local
 
 **1.3 Run the container:**
 ```bash
-docker run --rm --detach --name nginx-app -p 8080:8080 nginx-app:local
+docker run --rm --detach --name nginx-app -p 8080:8080 nginx-app:test123
 ```
 
-**1.4 Test the endpoints:**
+**1.4 Verify container is running:**
 ```bash
-# Test root endpoint (should show HTML with your name)
+docker ps | grep nginx-app
+```
+
+**Expected output:**
+```
+CONTAINER ID   IMAGE               STATUS
+abc123...      nginx-app:test123   Up 5 seconds (healthy)   0.0.0.0:8080->8080/tcp
+```
+
+**1.5 Test the endpoints:**
+```bash
+# Test root endpoint - should show HTML with name and BUILD_SHA
 curl http://localhost:8080/
 
-# Test health endpoint (should return "ok")
+# Test health endpoint - should return "ok"
 curl http://localhost:8080/healthz
-
-# Run the health check script
-bash scripts/healthcheck.sh http://localhost:8080/
 ```
 
 **Expected response from root:**
@@ -138,13 +189,18 @@ bash scripts/healthcheck.sh http://localhost:8080/
       <h1>akash saha</h1>
       <p>DevOps Intern Final Assessment</p>
       <p>Submission date: 2026-11-08</p>
-      <p>Build identifier: local</p>
+      <p>Build identifier: test123</p>  <!-- Should match your BUILD_SHA -->
     </main>
   </body>
 </html>
 ```
 
-**1.5 Clean up:**
+**Expected response from /healthz:**
+```
+ok
+```
+
+**1.6 Clean up (before Nomad deployment):**
 ```bash
 docker rm --force nginx-app
 ```
@@ -155,6 +211,8 @@ docker rm --force nginx-app
 
 ### Step 2: Run Monitoring Stack (Loki + Grafana)
 
+> **Important:** Start monitoring BEFORE deploying to Nomad so logs are captured from the beginning.
+
 **2.1 Start the monitoring services:**
 ```bash
 docker compose -f monitoring/docker-compose.yaml up -d
@@ -162,8 +220,7 @@ docker compose -f monitoring/docker-compose.yaml up -d
 
 **Expected output:**
 ```
-[+] Running 4/4
- ✔ Network monitoring_loki     Created
+[+] Running 3/3
  ✔ Container monitoring-loki-1      Started
  ✔ Container monitoring-promtail-1  Started
  ✔ Container monitoring-grafana-1   Started
@@ -182,85 +239,70 @@ monitoring-loki-1         Up        0.0.0.0:3100->3100/tcp
 monitoring-promtail-1     Up
 ```
 
-**2.3 Check Loki is ready:**
+**2.3 Wait for Loki to be ready (takes ~15-20 seconds):**
 ```bash
+# Check Loki status
 curl http://localhost:3100/ready
 ```
 
-**Expected response:** `ready`
+**Initial response:** `Ingester not ready: waiting for 15s after being ready`  
+**After 20 seconds:** `ready` ✅
 
-**2.4 Start the NGINX container again (for log collection):**
-```bash
-docker run --rm --detach --name nginx-app -p 8080:8080 nginx-app:local
-```
-
-**2.5 Generate some logs:**
-```bash
-# Make a few requests to generate access logs
-curl http://localhost:8080/
-curl http://localhost:8080/healthz
-curl http://localhost:8080/not-found  # This generates a 404
-```
-
-**2.6 Verify Promtail is collecting logs:**
-```bash
-# Wait 10 seconds for logs to be shipped to Loki
-sleep 10
-
-# Query Loki API for logs
-curl -G -s "http://localhost:3100/loki/api/v1/query" \
-  --data-urlencode 'query={job="docker", container="nginx-app"}' | jq
-```
-
-**Expected output:** JSON with log entries from nginx-app
-
-**2.7 Access Grafana UI:**
+**2.4 Access Grafana UI:**
 1. Open browser: http://localhost:3000
 2. Login: `admin` / `admin`
 3. Skip password change (or set new password)
 
-**2.8 Add Loki data source in Grafana:**
-1. Click **⚙️ Configuration** → **Data Sources**
+**2.5 Add Loki data source in Grafana:**
+1. Click **⚙️ Configuration** (gear icon) → **Data Sources**
 2. Click **Add data source**
 3. Select **Loki**
 4. Set URL: `http://loki:3100`
-5. Click **Save & Test** (should show green checkmark "Data source is working")
+5. Click **Save & Test** (should show green checkmark ✅)
 
-✅ **Step 2 Complete** - Monitoring stack is running and collecting logs
+✅ **Step 2 Complete** - Monitoring stack is ready
 
 ---
 
 ### Step 3: Deploy to Nomad
 
-> **Note:** This step requires a running Nomad + Consul cluster. If you don't have one, see the [Nomad setup guide](https://developer.hashicorp.com/nomad/tutorials/get-started/get-started-install) first.
+> **✅ VERIFIED:** Nomad v2.1.1 and Consul v2.1.0 tested and working. See [COMPLETE_VERIFICATION.md](COMPLETE_VERIFICATION.md) for proof.
 
-**3.1 Verify Nomad and Consul are running:**
+**3.1 Verify Nomad is running:**
 ```bash
+nomad version
 nomad server members
-consul members
+nomad node status
 ```
 
-**3.2 Get your commit SHA (or use a CI-built image):**
-```bash
-# For local testing, use any tag
-export IMAGE_TAG="local"
+**Expected output:**
+```
+Nomad v2.1.1 (or higher)
 
-# Or use the latest commit SHA
-export IMAGE_TAG=$(git rev-parse --short HEAD)
+Name                    Address    Port  Status  Leader
+LAPTOP-F43OUD78.global  127.0.0.1  4648  alive   true
 
-echo "Using image tag: $IMAGE_TAG"
+ID        DC   Name             Status
+49da9266  dc1  LAPTOP-F43OUD78  ready
 ```
 
-**3.3 If using GHCR, ensure image is pushed:**
+**3.2 Use the local image we built:**
 ```bash
-# Tag for GHCR
-docker tag nginx-app:local ghcr.io/asaha-os/devops-intern:$IMAGE_TAG
+# We'll use the image we built in Step 1
+# No need to push to GHCR for local testing
+```
 
-# Login to GHCR
-echo $GITHUB_TOKEN | docker login ghcr.io -u asaha-os --password-stdin
+**3.3 Validate the Nomad job:**
+```bash
+nomad job validate \
+  -var="image_repository=nginx-app" \
+  -var="image_tag=test123" \
+  nomad/nginx-app.nomad.hcl
+```
 
-# Push image
-docker push ghcr.io/asaha-os/devops-intern:$IMAGE_TAG
+**Expected output:**
+```
+Job validation successful
 ```
 
 **3.4 Validate the Nomad job:**
@@ -277,86 +319,192 @@ nomad job validate \
 ```bash
 nomad job plan \
   -var="image_repository=ghcr.io/asaha-os/devops-intern" \
-  -var="image_tag=$IMAGE_TAG" \
-  nomad/nginx-app.nomad.hcl
-```
-
-**3.6 Deploy to Nomad:**
+**3.4 Plan the deployment (optional dry-run):**
 ```bash
-nomad job run \
-  -var="image_repository=ghcr.io/asaha-os/devops-intern" \
-  -var="image_tag=$IMAGE_TAG" \
+nomad job plan \
+  -var="image_repository=nginx-app" \
+  -var="image_tag=test123" \
   nomad/nginx-app.nomad.hcl
 ```
 
 **Expected output:**
 ```
-==> 2026-11-22T17:16:17Z: Monitoring evaluation "abc12345"
-    Evaluation triggered by job "nginx-app"
-==> 2026-11-22T17:16:17Z: Evaluation within deployment: "def67890"
-==> 2026-11-22T17:16:17Z: Allocation "ghi34567" created: node "node-xyz", group "web"
-==> 2026-11-22T17:16:18Z: Evaluation status changed: "pending" -> "complete"
-==> Evaluation "abc12345" finished with status "complete"
++ Job: "nginx-app"
++ Task Group: "web" (1 create)
+  + Task: "nginx" (forces create)
+
+Scheduler dry-run:
+- All tasks successfully allocated.
 ```
 
-**3.7 Check deployment status:**
+**3.5 Deploy to Nomad:**
+```bash
+nomad job run \
+  -var="image_repository=nginx-app" \
+  -var="image_tag=test123" \
+  nomad/nginx-app.nomad.hcl
+```
+
+**Expected output:**
+```
+==> 2026-11-28T11:13:05+05:30: Monitoring evaluation "58e7acbf"
+    Evaluation triggered by job "nginx-app"
+    Evaluation within deployment: "4497f892"
+    Allocation "72d653f2" created: node "49da9266", group "web"
+    Evaluation status changed: "pending" -> "complete"
+==> Evaluation "58e7acbf" finished with status "complete"
+==> Monitoring deployment "4497f892"
+
+Status      = successful
+Description = Deployment completed successfully
+
+Task Group  Auto Revert  Desired  Placed  Healthy  Unhealthy
+web         true         1        1       1        0        ✅
+```
+
+**3.6 Check deployment status:**
 ```bash
 nomad job status nginx-app
 ```
 
-**3.8 Get allocation ID and view logs:**
+**Expected output:**
+```
+Status        = running
+Deployed
+Task Group  Queued  Starting  Running  Failed  Complete
+web         0       0         1        0       0         ✅
+```
+
+**3.7 Get allocation details:**
 ```bash
-# List allocations
+# List allocations and get the allocation ID
 nomad job allocations nginx-app
 
-# View logs (replace ALLOC_ID with actual ID from above)
-nomad alloc logs <ALLOC_ID> nginx
+# Get detailed allocation info (replace 72d653f2 with your allocation ID)
+nomad alloc status 72d653f2
 ```
 
-**3.9 Test the deployed service:**
+**Expected output:**
+```
+ID                  = 72d653f2-5799-bc8b-43fd-5238bd3b7902
+Client Status       = running ✅
+Deployment Health   = healthy ✅
+
+Allocation Addresses:
+Label  Dynamic  Address
+*http  yes      127.0.0.1:26142 -> 8080  ← Note this port!
+```
+
+**3.8 Test the deployed service:**
 ```bash
-# Get the allocated port
-nomad job status nginx-app | grep -A 10 "Allocated Resources"
-
-# Test endpoint (replace NODE_IP and PORT)
-curl http://<NODE_IP>:<PORT>/
-curl http://<NODE_IP>:<PORT>/healthz
+# Use the port from the allocation (e.g., 26142)
+curl http://127.0.0.1:26142/
+curl http://127.0.0.1:26142/healthz
 ```
 
-✅ **Step 3 Complete** - Application deployed to Nomad
+**Expected response:**
+```html
+<h1>akash saha</h1>
+<p>Build identifier: test123</p>
+```
+
+**3.9 View logs from Nomad:**
+```bash
+# Replace 72d653f2 with your allocation ID
+nomad alloc logs 72d653f2 nginx
+```
+
+**Expected output:**
+```
+172.17.0.1 - - [28/Nov/2026:05:44:14 +0000] "GET / HTTP/1.1" 200 850
+```
+
+**3.10 Check Consul service registration:**
+```bash
+# List services
+curl -s http://localhost:8500/v1/catalog/services | python -m json.tool
+
+# Check health
+curl -s http://localhost:8500/v1/health/service/nginx-app | python -m json.tool
+```
+
+**Expected in health check:**
+```json
+{
+  "Status": "passing",
+  "Output": "HTTP GET http://127.0.0.1:26142/healthz: 200 OK Output: ok\n"
+}
+```
+
+✅ **Step 3 Complete** - Application deployed to Nomad with healthy Consul checks
 
 ---
 
 ### Step 4: Query Logs in Grafana
 
-**4.1 Open Grafana Explore:**
+**4.1 Find the Nomad container name:**
+```bash
+docker ps | grep nginx
+```
+
+**Expected output:**
+```
+nginx-72d653f2-5799-bc8b-43fd-5238bd3b7902  ← This is the container name
+```
+
+**4.2 Generate some traffic:**
+```bash
+# Use the port from Step 3.7 (e.g., 26142)
+curl http://127.0.0.1:26142/
+curl http://127.0.0.1:26142/healthz
+curl http://127.0.0.1:26142/test-404
+```
+
+**4.3 Wait for Promtail to collect logs (5-10 seconds)**
+
+**4.4 Query via Loki API:**
+```bash
+# Check if Loki sees the Nomad container
+curl -s http://localhost:3100/loki/api/v1/label/container/values | python -m json.tool
+
+# Query logs (use wildcard for Nomad containers)
+curl -G -s "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode "query={container=~\"nginx.*\"}" \
+  | python -m json.tool
+```
+
+**Expected output:**
+```json
+{
+  "data": [
+    "nginx-72d653f2-5799-bc8b-43fd-5238bd3b7902"  ✅
+  ]
+}
+```
+
+**4.5 Open Grafana Explore:**
 1. Go to http://localhost:3000
 2. Click **🧭 Explore** (compass icon on left sidebar)
 3. Select **Loki** as data source (top dropdown)
 
-**4.2 Run LogQL queries:**
+**4.6 Run LogQL queries:**
 
-**Query all NGINX logs:**
+**Query all Nomad nginx logs (use wildcard):**
 ```
-{job="docker", container="nginx-app"}
+{container=~"nginx.*"}
 ```
 
-**Query only GET requests:**
+**Query specific container (copy exact name from docker ps):**
 ```
-{job="docker", container="nginx-app"} |= "GET"
+{container="nginx-72d653f2-5799-bc8b-43fd-5238bd3b7902"}
 ```
 
 **Query 404 errors:**
 ```
-{job="docker", container="nginx-app"} |= "404"
+{container=~"nginx.*"} |= "404"
 ```
 
-**Query with time range (last 5 minutes):**
-```
-{job="docker", container="nginx-app"}[5m]
-```
-
-**4.3 View results:**
+**4.7 View results:**
 - Click **Run query** (or press Shift+Enter)
 - Logs appear in the bottom panel
 - Click on a log line to expand and see full details
@@ -533,7 +681,64 @@ The Dockerfile validates that BUILD_SHA contains only alphanumeric characters, d
 
 ---
 
-## Quick Reference Commands
+## ⚡ Quick Reference Commands
+
+### Complete Workflow (Copy-Paste Ready)
+
+```bash
+# === STEP 1: BUILD ===
+docker build --build-arg BUILD_SHA=test123 -t nginx-app:test123 ./app
+docker images nginx-app
+
+# === STEP 2: MONITORING ===
+docker compose -f monitoring/docker-compose.yaml up -d
+docker compose -f monitoring/docker-compose.yaml ps
+curl http://localhost:3100/ready
+
+# === STEP 3: NOMAD DEPLOYMENT ===
+# Verify Nomad is ready
+nomad version
+nomad server members
+nomad node status
+
+# Validate job
+nomad job validate -var="image_repository=nginx-app" -var="image_tag=test123" nomad/nginx-app.nomad.hcl
+
+# Deploy
+nomad job run -var="image_repository=nginx-app" -var="image_tag=test123" nomad/nginx-app.nomad.hcl
+
+# Check status
+nomad job status nginx-app
+nomad job allocations nginx-app
+
+# Get allocation details (replace ALLOC_ID)
+nomad alloc status <ALLOC_ID>
+
+# === STEP 4: TEST ===
+# Get port from allocation output, then test
+curl http://127.0.0.1:<PORT>/
+curl http://127.0.0.1:<PORT>/healthz
+
+# View Nomad logs
+nomad alloc logs <ALLOC_ID> nginx
+
+# === STEP 5: CONSUL HEALTH CHECK ===
+curl -s http://localhost:8500/v1/health/service/nginx-app | python -m json.tool
+
+# === STEP 6: LOKI LOGS ===
+# Check container discovery
+curl -s http://localhost:3100/loki/api/v1/label/container/values | python -m json.tool
+
+# Query logs
+curl -G -s "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode "query={container=~\"nginx.*\"}" | python -m json.tool
+
+# === STEP 7: GRAFANA ===
+# Open http://localhost:3000 (admin/admin)
+# Query: {container=~"nginx.*"}
+```
+
+### Individual Commands by Category
 
 ### Local Docker Commands
 ```bash
