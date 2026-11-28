@@ -286,17 +286,43 @@ ID        DC   Name             Status
 49da9266  dc1  LAPTOP-F43OUD78  ready
 ```
 
-**3.2 Use the local image we built:**
+**3.2 For local testing (use local image):**
 ```bash
-# We'll use the image we built in Step 1
+# Use the image we built in Step 1
 # No need to push to GHCR for local testing
+IMAGE_TAG="test123"
+IMAGE_REPO="nginx-app"
+```
+
+**3.2 For production (use GHCR with SHA tag):**
+```bash
+# Get the git commit SHA
+IMAGE_TAG=$(git rev-parse --short HEAD)
+IMAGE_REPO="ghcr.io/asaha-os/devops-intern"
+
+echo "Using SHA-tagged image: $IMAGE_REPO:$IMAGE_TAG"
+
+# Tag local image for GHCR
+docker tag nginx-app:test123 $IMAGE_REPO:$IMAGE_TAG
+
+# Login to GHCR (requires GITHUB_TOKEN)
+echo $GITHUB_TOKEN | docker login ghcr.io -u asaha-os --password-stdin
+
+# Push SHA-tagged image
+docker push $IMAGE_REPO:$IMAGE_TAG
+```
+
+**Example with actual SHA:**
+```bash
+# This shows how CI/CD pushes images
+docker push ghcr.io/asaha-os/devops-intern:9298512
 ```
 
 **3.3 Validate the Nomad job:**
 ```bash
 nomad job validate \
-  -var="image_repository=nginx-app" \
-  -var="image_tag=test123" \
+  -var="image_repository=$IMAGE_REPO" \
+  -var="image_tag=$IMAGE_TAG" \
   nomad/nginx-app.nomad.hcl
 ```
 
@@ -305,25 +331,15 @@ nomad job validate \
 Job validation successful
 ```
 
-**3.4 Validate the Nomad job:**
-```bash
-nomad job validate \
-  -var="image_repository=ghcr.io/asaha-os/devops-intern" \
-  -var="image_tag=$IMAGE_TAG" \
-  nomad/nginx-app.nomad.hcl
-```
-
-**Expected output:** `Job validation successful`
-
-**3.5 Plan the deployment (dry run):**
+**3.4 Plan the deployment (optional dry-run):**
 ```bash
 nomad job plan \
   -var="image_repository=ghcr.io/asaha-os/devops-intern" \
 **3.4 Plan the deployment (optional dry-run):**
 ```bash
 nomad job plan \
-  -var="image_repository=nginx-app" \
-  -var="image_tag=test123" \
+  -var="image_repository=$IMAGE_REPO" \
+  -var="image_tag=$IMAGE_TAG" \
   nomad/nginx-app.nomad.hcl
 ```
 
@@ -340,8 +356,24 @@ Scheduler dry-run:
 **3.5 Deploy to Nomad:**
 ```bash
 nomad job run \
+  -var="image_repository=$IMAGE_REPO" \
+  -var="image_tag=$IMAGE_TAG" \
+  nomad/nginx-app.nomad.hcl
+```
+
+**Example for local testing:**
+```bash
+nomad job run \
   -var="image_repository=nginx-app" \
   -var="image_tag=test123" \
+  nomad/nginx-app.nomad.hcl
+```
+
+**Example for production with SHA tag:**
+```bash
+nomad job run \
+  -var="image_repository=ghcr.io/asaha-os/devops-intern" \
+  -var="image_tag=9298512" \
   nomad/nginx-app.nomad.hcl
 ```
 
