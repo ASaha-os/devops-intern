@@ -16,7 +16,7 @@ job "nginx-app" {
 
     network {
       port "http" {
-        to = 80
+        to = 8080
       }
     }
 

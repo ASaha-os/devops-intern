@@ -1,5 +1,6 @@
 # DevOps Intern Final Assessment
 
+![CI](https://img.shields.io/github/actions/workflow/status/ASaha-os/devops-intern/ci.yml?style=plastic&label=CI)
 
 | Field | Value |
 |---|---|
